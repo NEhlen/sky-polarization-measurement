@@ -23,6 +23,8 @@ This project uses an ESP32 microcontroller and four BPW34 photodiodes to measure
 * Feedback resistors (100&nbsp;kΩ - 1&nbsp;MΩ) (4x)
 
 ### Wiring
+
+#### BPW34 / LM324
 Each BPW34 photodiode is reverse-biased in a TIA circuit:
 
 * Photodiode anode → GND
@@ -39,6 +41,21 @@ The LM324 has four op-amps in one package, so one IC is sufficient for all four 
 
 LM324 is powered with 5V (from USB or VIN pin of ESP32).
 
+
+#### ICM-20948
+
+The ICM-20948 is a 9-axis IMU that combines a 3-axis gyroscope, a 3-axis accelerometer, and a 3-axis magnetometer. Connect it to the ESP32 using the I²C interface as follows:
+
+* **ICM-20948 VCC** → **ESP32 3.3V**
+* **ICM-20948 GND** → **ESP32 GND**
+* **ICM-20948 SDA** → **ESP32 GPIO21**
+* **ICM-20948 SCL** → **ESP32 GPIO22**
+
+Ensure pull-up resistors (typically 4.7kΩ) are present on the SDA and SCL lines if not already included on the breakout board.
+
+
+#### Breadboard Sketch
+
 ![Diode Readout Breadboard Sketch](docs/breadboard_sketch.png)
 
 ### Polarizer Setup
@@ -51,57 +68,24 @@ The photodiodes are encased in a plastic housing, they are sensitive to vis and 
 
 In broad daylight, a voltage of about $0.5-1\,\mathrm{V}$ is produced by a single photodiode. To increase sensitivity and reaction time, the Photodiodes are used in **photoconductive mode** in combination with an LM 324 op-amp rather than **photovoltaic mode** (zero-bias).
 
+#### ICM-20948
 
-## Firmware (ESP32)#
-The ESP32 sets up a local Wi-Fi Access Point and serves light intensity values via HTTP at http://192.168.4.1/:
+The ICM-20948 requires proper initialization in the firmware to read sensor data. Libraries such as [Adafruit's ICM-20948 library](https://github.com/adafruit/Adafruit_ICM20948) can simplify communication and data processing. However, the Adafruit ICM-20948 library **does not give low level access to the digital motion processor (DMP)** on the ICM-20948.
+Instead, use the [SparkFun ICM-20948 Arduino Library](https://github.com/sparkfun/SparkFun_ICM-20948_ArduinoLibrary).
 
-```C
-#include <WiFi.h>
-#include <WebServer.h>
+The DMP offers a `INV_ICM20948_SENSOR_ORIENTATION` mode that enables access to the 32-bit 9-axis quaternion + heading accuracy without needing to do any additional sensor fusion on the firmware side. From the quaternion, the Euler angles for `yaw`, `tilt` and `roll` can be calculated in the usual manner. This gives alt-az and roll.
 
-const char* ssid = "PhotodiodeESP32";
-const char* password = "12345678";
-const int sensorPins[4] = {32, 33, 34, 35};
-WebServer server(80);
-int sensorVals[4] = {0};
+## Firmware (ESP32)
+The ESP32 sets up a local Wi-Fi Access Point and serves light intensity values as well as alt-az-rot of the ICM-20948 via HTTP at http://192.168.4.1/.
 
-void handleRoot() {
-  String json = "{";
-  for (int i = 0; i < 4; i++) {
-    json += "\"sensor" + String(i) + "\":" + String(sensorVals[i]);
-    if (i < 3) json += ",";
-  }
-  json += "}";
-  server.send(200, "application/json", json);
-}
-
-void setup() {
-  Serial.begin(115200);
-  WiFi.softAP(ssid, password);
-  delay(100);
-  server.on("/", handleRoot);
-  server.begin();
-}
-
-void loop() {
-  for (int i = 0; i < 4; i++) {
-    sensorVals[i] = analogRead(sensorPins[i]);
-  }
-  for (int i = 0; i < 4; i++) {
-    Serial.print(sensorVals[i]);
-    Serial.print(i < 3 ? " " : "\n");
-  }
-  server.handleClient();
-  delay(100);
-}
-```
+See the firmware at `scripts/esp32/esp32-photodiode-readout-server.ino`
 
 ### Serial Plotting
 The firmware also prints raw sensor values over serial (space-separated) so you can use the Arduino Serial Plotter for real-time visualization.
 ![Serial Plotting Example](data/serial_monitor_example.png)
 
 
-## Calculations
+## Calculation of Polarization Direction and Strength
 
 ### Simple calculation
 With intensities measured through linear polarizers at 0°, 45°, 90°, and 135°, you can compute the Degree of Linear Polarization (DoLP) and Angle of Linear Polarization (AoLP) as follows:
