@@ -15,7 +15,7 @@ WebServer server(80);
 ICM_20948_I2C myICM;
 
 // Logging settings
-constexpr size_t MAX_SAMPLES = 2000;  // ~4 minutes @ 10Hz
+constexpr size_t MAX_SAMPLES = 2400;  // ~4 minutes @ 10Hz
 bool loggingEnabled = false;
 size_t currentIndex = 0;
 
